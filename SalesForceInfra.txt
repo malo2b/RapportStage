@@ -1,0 +1,29 @@
+Migration Salesforce
+
+Contextualisation
+
+Jellysmack utilise depuis plusieurs années le logiciel Pipedrive comme logiciel de CRM. Pulse et Pipedrive communiquent entre eux. Pipedrive va être remplacé par le logiciel Salesforce car il permet d’avoir accès à des données plus précises et est plus performant. C’est un changement majeur qui va impacter beaucoup de services de Jellysmack. L’après Pipedrive est appelé le « Nouveau Monde ».
+
+Les attentes
+
+Pour aller avec ce changement majeur, il faut concevoir une solution pour gérer ce nouveau flux de données. Cette solution se doit d’être la plus performante possible et sans bugs. L’ancienne infrastructure avec Pipedrive ne remplissait pas ces deux critères, il était donc nécessaire de repenser complètement l’infrastructure. 
+
+Les contraintes
+
+Les contraintes sur cette nouvelle infrastructure sont multiples. Premièrement le contrat avec Salesforce donne la possibilité de faire 10 000 appels API par mois. Puis, des énormes volumes de données peuvent être envoyée par Salesforce a l’infrastructure, et cette dernière doit être capable de les ingérer sans pertes. Les données acquises doivent être mise à disposition de toutes les squads de la boite, il est nécessaire de supprimer l’individualisme de chaque squad. Il faut que chacune d’entre elle puissent y accéder sans que cela ne nous impacte et qu’elles n’aient besoin de faire appel à nous. Les données doivent également être utilisable et accessible en temps réel.
+
+Ébauche d’une première solution
+
+Ce sont les services AWS d’Amazon qui ont été retenus pour concevoir cette nouvelle infrastructure. 
+
+Acquisition des données
+
+L’acquisition des données sera faite par AppFlow qui est un service d’intégration qui permet d’assurer le transfert de données en sécurité entre deux applications (ici Pulse et Salesforce) en tant que SaaS. Toutes les données envoyées par Salesforce via un protocole IPFIX passeront par AppFlow ce qui garantira l’acquisition de toutes les données sans pertes.
+
+Les données acquises par AppFlow seront redispatchées dans différents bucket S3.  Ces buckets ont pour rôle de stocker toutes les données acquises par AppFlow sous forme d’objet JSON. L’utilisation d’un tel système de stockage permet de s’affranchir de l’utilisation de champs ce qui permettra à d’autres squads d’utiliser les données de façon indépendante. Ce système de stockage permet également l’acquisition d’énormes volumes de données, ce qui les protège de toutes pertes. Il y sera donc stocké toute la donnée froide et brute. Il semble également plus performant d’affecter un bucket spécifique à chaque type d’acquisition (create, delete, update) plutôt qu’un seul bucket avec des tags.
+
+Une fois les données dans les différents buckets, pour pouvoir répondre au besoin de temps réel et d’archivage de centralisation de la donnée pour toute la boite, il faut pouvoir déclencher un évènement. Cet évènement a pour but de faire un appel à une API pour fournir la donnée à notre service en temps réel, et a un service Firehose pour pouvoir ensuite centraliser les données dans une base Redshift et les rendre accessible à toutes les squads. Les AWS Lambda functions permettent donc d’attendre l’arrivée de nouvelles données sur les buckets. Lorsqu’elles sont déclenchées, elles les transfèreront via un appel API et a Firehose.
+
+Firehose permet via un mapping fait au préalable d’insérer les données du fichier s3 dans la base Redshift DA (Data Analyst) qui est la base avec toutes les données froides de la boite. 
+
+Les données d’acquisition seront également traitées via des EventBridge qui permettent d’envoyer les datas dans nos bases uniquement si elles nous intéressent. Ces derniers seront couplés a l’utilisation des Lambda functions.
